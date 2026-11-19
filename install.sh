@@ -74,6 +74,9 @@ INDEX_URL="https://github.com/${DEFAULT_REPO}/releases/download/supported-index/
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+if [ "${ACTION}" != "list" ]; then
+    echo "[1/7] Fetching release index from ${DEFAULT_REPO}..."
+fi
 curl -fsSL -o "${TMP_DIR}/index.json" "${INDEX_URL}"
 
 if [ "${ACTION}" = "list" ]; then
@@ -175,9 +178,10 @@ PY
 )
 
 IFS='|' read -r MATCH_KEY MATCH_URL MATCH_SHA256 MATCH_PKG_VER <<< "${MATCH_INFO}"
-echo "Matched build: ${MATCH_KEY} (nginx ${MATCH_PKG_VER})"
+echo "[2/7] Matched build: ${MATCH_KEY} (nginx ${MATCH_PKG_VER})"
 
 TARBALL_PATH="${TMP_DIR}/attachment.tar.gz"
+echo "[3/7] Downloading ${MATCH_URL}..."
 curl -fsSL -o "${TARBALL_PATH}" "${MATCH_URL}"
 ACTUAL_SHA256=$(sha256sum "${TARBALL_PATH}" | awk '{print $1}')
 
@@ -187,7 +191,7 @@ if [ "${ACTUAL_SHA256}" != "${MATCH_SHA256}" ]; then
     echo "  Actual:   ${ACTUAL_SHA256}" >&2
     exit 1
 fi
-echo "Verified SHA-256: ${ACTUAL_SHA256}"
+echo "[4/7] Verified SHA-256: ${ACTUAL_SHA256}"
 
 if [ "${DRY_RUN}" = "true" ]; then
     echo "Dry run complete; no files modified."
@@ -206,6 +210,7 @@ fi
 MOD_DIR="${LIBDIR}/nginx/modules"
 mkdir -p "${MOD_DIR}"
 
+echo "[5/7] Backing up any existing attachment files and /etc/nginx/nginx.conf..."
 BACKUP_DIR="${TMP_DIR}/backup"
 mkdir -p "${BACKUP_DIR}"
 for f in \
@@ -218,7 +223,9 @@ for f in \
         cp -a "${f}" "${BACKUP_DIR}/"
     fi
 done
-[ -f /etc/nginx/nginx.conf ] && cp -a /etc/nginx/nginx.conf "${BACKUP_DIR}/nginx.conf"
+if [ -f /etc/nginx/nginx.conf ]; then
+    cp -a /etc/nginx/nginx.conf "${BACKUP_DIR}/nginx.conf"
+fi
 
 rollback() {
     echo "ERROR: Installation failed; restoring previous attachment files..." >&2
@@ -237,6 +244,7 @@ rollback() {
 
 trap 'rollback' ERR
 
+echo "[6/7] Installing attachment module to ${MOD_DIR} and libraries to ${LIBDIR}..."
 install -m 0755 "${UNPACK_DIR}/lib/libosrc_compression_utils.so" "${LIBDIR}/libosrc_compression_utils.so"
 install -m 0755 "${UNPACK_DIR}/lib/libosrc_nginx_attachment_util.so" "${LIBDIR}/libosrc_nginx_attachment_util.so"
 install -m 0755 "${UNPACK_DIR}/lib/libosrc_shmem_ipc.so" "${LIBDIR}/libosrc_shmem_ipc.so"
@@ -256,17 +264,21 @@ command -v ldconfig >/dev/null 2>&1 && ldconfig || true
 
 if [ -f /etc/nginx/nginx.conf ]; then
     if ! grep -qE 'load_module\s+.*ngx_cp_attachment_module\.so;' /etc/nginx/nginx.conf; then
+        echo "Adding load_module ${MOD_DIR}/ngx_cp_attachment_module.so; to /etc/nginx/nginx.conf"
         sed -i "1i load_module ${MOD_DIR}/ngx_cp_attachment_module.so;" /etc/nginx/nginx.conf
     fi
 fi
 
+echo "[7/7] Testing nginx configuration (nginx -t) and reloading..."
 nginx -t
 trap - ERR
 
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
     systemctl reload nginx
+elif [ -s /run/nginx.pid ]; then
+    nginx -s reload
 else
-    nginx -s reload || true
+    echo "nginx is not running; start nginx when ready."
 fi
 
 echo "Successfully installed ${MATCH_KEY} (${MATCH_PKG_VER})."
