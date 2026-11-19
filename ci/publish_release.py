@@ -70,14 +70,20 @@ curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | b
 ```
 
 **What `install.sh` does:**
+<details>
+<summary>Expand steps (auto-detect, SHA-256 check, backup, nginx -t rollback)</summary>
+
 1. Detects your OS, architecture, and installed `nginx` package version.
 2. Downloads the matching `.tar.gz` and verifies its `sha256sum` against `index.json` before unpacking.
 3. Backs up existing attachment `.so` files and `/etc/nginx/nginx.conf` (with automatic rollback on error).
 4. Installs `ngx_cp_attachment_module.so` + helper libraries, ensures `load_module` is in `/etc/nginx/nginx.conf`, runs `nginx -t`, and reloads NGINX.
 
+</details>
+
 ### Manual Verification & Install
 ```bash
 sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify openappsec-ngx-attachment_*.tar.gz -R {repo_slug}
 tar -xzf openappsec-ngx-attachment_*.tar.gz
 ```
 Then copy `lib/libngx_module.so` to `/usr/lib/nginx/modules/ngx_cp_attachment_module.so` (or `/usr/lib64/nginx/modules/` on RHEL/Rocky), copy the remaining `lib/*.so` to `/usr/lib/` (or `/usr/lib64/`), add `load_module .../ngx_cp_attachment_module.so;` to `/etc/nginx/nginx.conf`, verify with `nginx -t`, and reload NGINX.
@@ -106,7 +112,15 @@ def build_index_notes(repo_slug: str, branch: str, entries: List[Dict[str, Any]]
 curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | sudo bash
 ```
 
-**What `install.sh` does:** detects OS/arch/`nginx` version → downloads matching tarball → verifies SHA-256 before unpacking → backs up existing `.so` files & `nginx.conf` (auto-rollback on error) → installs module + `load_module` → runs `nginx -t` and reloads NGINX. (Use `--dry-run` to test matching & checksum without modifying files.)
+<details>
+<summary>What <code>install.sh</code> does (auto-detect, SHA-256 check, backup, rollback)</summary>
+
+1. Detects OS, arch, and installed `nginx` package version.
+2. Downloads the matching `.tar.gz` and verifies SHA-256 before unpacking.
+3. Backs up existing `.so` files and `nginx.conf` (with automatic rollback on error).
+4. Installs the module, adds `load_module`, runs `nginx -t`, and reloads NGINX.
+
+</details>
 
 ### List Available Builds
 ```bash

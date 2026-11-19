@@ -9,29 +9,49 @@
     body { max-width: 1120px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
     h1 { margin-bottom: 0.25rem; }
     .muted { opacity: 0.75; margin-top: 0; }
-    pre { padding: 0.75rem 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid rgba(128,128,128,0.3); }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; }
+    .cmd-box { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.9rem; border-radius: 8px; border: 1px solid rgba(128,128,128,0.35); margin: 0.75rem 0; overflow-x: auto; }
+    .cmd-box code { flex: 1; white-space: nowrap; }
+    button.copy-btn { padding: 0.25rem 0.55rem; font-size: 0.8rem; border-radius: 5px; border: 1px solid rgba(128,128,128,0.4); background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
+    button.copy-btn:hover { background: rgba(128,128,128,0.15); }
+    details { margin: 0.5rem 0 1rem; padding: 0.5rem 0.85rem; border-radius: 8px; border: 1px solid rgba(128,128,128,0.25); }
+    details summary { cursor: pointer; font-weight: 500; }
+    details ol { margin: 0.5rem 0 0.25rem; padding-left: 1.25rem; }
     .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
     input, select { padding: 0.45rem 0.65rem; border-radius: 6px; border: 1px solid rgba(128,128,128,0.4); background: transparent; color: inherit; }
     input { flex: 1 1 240px; }
     table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.92rem; }
     th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid rgba(128,128,128,0.25); }
     th { font-weight: 600; }
+    .sha-cell { display: inline-flex; align-items: center; gap: 0.4rem; }
     .links { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.75rem 0; }
   </style>
 </head>
 <body>
   <h1>open-appsec NGINX Attachments</h1>
-  <p class="muted">Automated, PGP-verified builds for <code>{{REPO}}</code></p>
+  <p class="muted">Automated, PGP-verified &amp; SLSA-attested builds for <code>{{REPO}}</code></p>
 
   <div class="links">
     <a href="supported-nginx.txt">supported-nginx.txt (plain text)</a>
     <a href="index.json">index.json (JSON)</a>
     <a href="https://github.com/{{REPO}}/releases">GitHub Releases</a>
+    <a href="https://github.com/{{REPO}}/attestations">Attestations</a>
   </div>
 
-  <pre><code>curl -fsSL https://raw.githubusercontent.com/{{REPO}}/{{BRANCH}}/install.sh | sudo bash</code></pre>
-  <p class="muted"><strong>What <code>install.sh</code> does:</strong> detects OS, arch &amp; installed <code>nginx</code> version &rarr; downloads matching tarball &rarr; verifies SHA-256 before unpacking &rarr; backs up existing <code>.so</code> files &amp; <code>nginx.conf</code> (auto-rollback on failure) &rarr; installs module &amp; <code>load_module</code> &rarr; runs <code>nginx -t</code> and reloads NGINX. Add <code>--dry-run</code> to verify without modifying files, or <code>--list</code> to list builds.</p>
+  <div class="cmd-box">
+    <code id="installCmd">curl -fsSL https://raw.githubusercontent.com/{{REPO}}/{{BRANCH}}/install.sh | sudo bash</code>
+    <button type="button" class="copy-btn" id="copyInstallBtn">Copy</button>
+  </div>
+
+  <details>
+    <summary>What <code>install.sh</code> does (and extra flags: <code>--dry-run</code>, <code>--list</code>)</summary>
+    <ol>
+      <li>Detects your OS, architecture, and installed <code>nginx</code> package version.</li>
+      <li>Downloads the matching <code>.tar.gz</code> and verifies its SHA-256 against <code>index.json</code> before unpacking.</li>
+      <li>Backs up existing attachment <code>.so</code> files and <code>/etc/nginx/nginx.conf</code> (auto-rollback on error).</li>
+      <li>Installs <code>ngx_cp_attachment_module.so</code> and helper libraries, adds <code>load_module</code> if missing, runs <code>nginx -t</code>, and reloads NGINX.</li>
+    </ol>
+  </details>
 
   <div class="controls">
     <input id="q" type="search" placeholder="Filter by distro, codename, arch, or nginx version..." />
@@ -49,7 +69,7 @@
         <th>Channel</th>
         <th>Arch</th>
         <th>NGINX Package</th>
-        <th>SHA-256 (prefix)</th>
+        <th>SHA-256</th>
         <th>Download</th>
       </tr>
     </thead>
@@ -64,6 +84,33 @@
     const channelEl = document.getElementById("channelFilter");
     const rowsEl = document.getElementById("rows");
     const countEl = document.getElementById("count");
+
+    function copyWithFeedback(text, btn) {
+      const done = () => {
+        const orig = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = orig; }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    }
+
+    function fallbackCopy(text, done) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); done(); } finally { document.body.removeChild(ta); }
+    }
+
+    document.getElementById("copyInstallBtn").addEventListener("click", function () {
+      copyWithFeedback(document.getElementById("installCmd").textContent, this);
+    });
 
     function populateSelect(el, values) {
       for (const v of [...new Set(values)].sort()) {
@@ -83,6 +130,24 @@
       } else {
         td.textContent = text;
       }
+      return td;
+    }
+
+    function shaCell(fullHash) {
+      const td = document.createElement("td");
+      td.title = fullHash;
+      const wrap = document.createElement("span");
+      wrap.className = "sha-cell";
+      const code = document.createElement("code");
+      code.textContent = fullHash.slice(0, 12) + "...";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-btn";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", () => copyWithFeedback(fullHash, btn));
+      wrap.appendChild(code);
+      wrap.appendChild(btn);
+      td.appendChild(wrap);
       return td;
     }
 
@@ -111,9 +176,7 @@
         tr.appendChild(cell(e.channel, false));
         tr.appendChild(cell(e.arch, true));
         tr.appendChild(cell(e.nginx_pkg_version, true));
-        const shaTd = cell(e.sha256.slice(0, 16) + "...", true);
-        shaTd.title = e.sha256;
-        tr.appendChild(shaTd);
+        tr.appendChild(shaCell(e.sha256));
 
         const dlTd = document.createElement("td");
         const link = document.createElement("a");
