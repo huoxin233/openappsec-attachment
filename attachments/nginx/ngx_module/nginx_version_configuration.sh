@@ -68,7 +68,7 @@ if [ "${SKIP_NGINX_GPG_VERIFY:-false}" != "true" ]; then
         exit 1
     fi
     GNUPGHOME_TMP=$(mktemp -d)
-    trap 'rm -rf "${GNUPGHOME_TMP}"' EXIT
+    trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "${GNUPGHOME_TMP}" || true' EXIT
     export GNUPGHOME="${GNUPGHOME_TMP}"
     chmod 700 "${GNUPGHOME}"
 
@@ -91,6 +91,10 @@ if [ "${SKIP_NGINX_GPG_VERIFY:-false}" != "true" ]; then
     echo "Verifying PGP signature ${ASC_FILE} for ${TARBALL}..."
     gpg --batch --verify "${ASC_FILE}" "${TARBALL}"
     echo "PGP signature verification succeeded for ${TARBALL}."
+    gpgconf --kill gpg-agent >/dev/null 2>&1 || true
+    rm -rf "${GNUPGHOME_TMP}" || true
+    unset GNUPGHOME
+    trap - EXIT
 fi
 
 tar -xzf "${TARBALL}"
