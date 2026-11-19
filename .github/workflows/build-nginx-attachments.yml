@@ -136,7 +136,7 @@ jobs:
 
   deploy_pages:
     needs: publish
-    if: needs.publish.outputs.has_pages == 'true'
+    if: ${{ !cancelled() && needs.publish.result == 'success' && needs.publish.outputs.has_pages == 'true' }}
     continue-on-error: true
     runs-on: ubuntu-latest
     environment:

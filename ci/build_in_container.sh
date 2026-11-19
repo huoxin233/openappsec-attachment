@@ -13,17 +13,47 @@ mkdir -p "${OUT_DIR}"
 install_deb_deps() {
     export DEBIAN_FRONTEND=noninteractive
     APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=20 -o APT::Update::Error-Mode=any"
-    if ! apt-get ${APT_OPTS} update; then
-        if [ "${DISTRO}" = "ubuntu" ] && [ "${ARCH}" = "amd64" ] && [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-            sed -i 's|http://archive.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+
+    switch_ubuntu_mirror() {
+        if [ "${DISTRO}" = "ubuntu" ] && [ "${ARCH}" = "amd64" ]; then
+            for src_file in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
+                if [ -f "${src_file}" ]; then
+                    sed -i 's|http://archive.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g' "${src_file}"
+                fi
+            done
         fi
-        apt-get ${APT_OPTS} update
-    fi
-    apt-get ${APT_OPTS} install -y --no-install-recommends \
+    }
+
+    apt_update_retry() {
+        if ! apt-get ${APT_OPTS} update; then
+            switch_ubuntu_mirror
+            sleep 5
+            apt-get ${APT_OPTS} update
+        fi
+    }
+
+    apt_install_retry() {
+        local attempt
+        for attempt in 1 2 3; do
+            if apt-get ${APT_OPTS} install -y --no-install-recommends "$@"; then
+                return 0
+            fi
+            echo "apt-get install failed (attempt ${attempt}/3); switching mirror/retrying..." >&2
+            switch_ubuntu_mirror
+            sleep 10
+            apt-get ${APT_OPTS} update || true
+        done
+        return 1
+    }
+
+    # On GitHub Actions amd64 runners, Azure mirror avoids archive.ubuntu.com timeouts
+    switch_ubuntu_mirror
+    apt_update_retry
+    apt_install_retry \
         ca-certificates curl wget gnupg2 lsb-release \
         build-essential cmake pkg-config python3 dos2unix \
         libpcre2-dev libxml2-dev zlib1g-dev libssl-dev libgeoip-dev libbrotli-dev
-    apt-get ${APT_OPTS} install -y --no-install-recommends libpcre3-dev || true
+    apt_install_retry libpcre3-dev || true
 
     install -d -m 0755 /etc/apt/keyrings
     curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg
@@ -34,8 +64,8 @@ Package: *
 Pin: origin nginx.org
 Pin-Priority: 900
 EOF
-    apt-get ${APT_OPTS} update
-    apt-get ${APT_OPTS} install -y --no-install-recommends "nginx=${PKG_VERSION}"
+    apt_update_retry
+    apt_install_retry "nginx=${PKG_VERSION}"
 }
 
 install_rpm_deps() {
