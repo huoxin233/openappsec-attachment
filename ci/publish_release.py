@@ -34,15 +34,68 @@ def fetch_existing_index(repo_slug: str) -> Dict[str, Any]:
         return {"schema_version": 1, "attachments": []}
 
 
-def ensure_release(tag: str, title: str, notes: str) -> None:
+def upsert_release(tag: str, title: str, notes_file: Path) -> None:
     res = run(["gh", "release", "view", tag], check=False)
     if res.returncode != 0:
-        run(["gh", "release", "create", tag, "--title", title, "--notes", notes])
+        run(["gh", "release", "create", tag, "--title", title, "--notes-file", str(notes_file)])
+    else:
+        run(["gh", "release", "edit", tag, "--title", title, "--notes-file", str(notes_file)])
+
+
+def build_release_notes(repo_slug: str, branch: str, tag: str, entries: List[Dict[str, Any]]) -> str:
+    rows = "\n".join(
+        f"| `{e['key']}` | `{e['distro']}` `{e['codename']}` | `{e['arch']}` | `{e['nginx_pkg_version']}` | `{e['sha256'][:16]}...` |"
+        for e in sorted(entries, key=lambda x: x["key"])
+    )
+    return f"""Automated, PGP-verified builds of `openappsec/attachment` for **`{tag}`**.
+
+### Quick Install / Upgrade (auto-detects OS, arch & NGINX version, verifies SHA-256, runs `nginx -t`)
+```bash
+curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | sudo bash
+```
+
+Other options:
+```bash
+# List all available builds
+curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | bash -s -- --list
+
+# Dry-run match & SHA-256 verification without modifying files
+curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | bash -s -- --dry-run
+```
+
+### Manual Verification & Install
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+tar -xzf openappsec-ngx-attachment_*.tar.gz
+```
+Then copy `lib/libngx_module.so` to `/usr/lib/nginx/modules/ngx_cp_attachment_module.so` (or `/usr/lib64/nginx/modules/` on RHEL/Rocky), copy the remaining `lib/*.so` to `/usr/lib/` (or `/usr/lib64/`), add `load_module .../ngx_cp_attachment_module.so;` to `/etc/nginx/nginx.conf`, verify with `nginx -t`, and reload NGINX.
+
+### Included Targets
+| Key | OS | Arch | NGINX Package | SHA-256 (prefix) |
+| :--- | :--- | :--- | :--- | :--- |
+{rows}
+"""
+
+
+def build_index_notes(repo_slug: str, branch: str, entries: List[Dict[str, Any]]) -> str:
+    return f"""Rolling machine-readable index (`index.json` and `supported-nginx.txt`) covering **{len(entries)}** published NGINX attachment builds.
+
+### Quick Install / Upgrade
+```bash
+curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | sudo bash
+```
+
+### List Available Builds
+```bash
+curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | bash -s -- --list
+```
+"""
 
 
 def main() -> int:
     artifacts_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("artifacts")
     repo_slug = os.environ["GITHUB_REPOSITORY"]
+    branch = os.getenv("GITHUB_REF_NAME", "release-ci")
 
     tarballs = sorted(artifacts_dir.rglob("*.tar.gz"))
     if not tarballs:
@@ -78,17 +131,17 @@ def main() -> int:
 
         by_release_tag.setdefault(release_tag, []).append(tb)
 
-    # Publish each NGINX version release with combined SHA256SUMS
+    # Publish each NGINX version release with combined SHA256SUMS and usage notes
     for tag, files in sorted(by_release_tag.items()):
-        ensure_release(
-            tag,
-            f"open-appsec NGINX attachments for {tag}",
-            f"Automated, GPG-verified builds of `openappsec/attachment` for `{tag}`.\n\nVerify downloads with `sha256sum -c SHA256SUMS`.",
-        )
-
         sums_dir = artifacts_dir / "_sums" / tag
         sums_dir.mkdir(parents=True, exist_ok=True)
         sums_file = sums_dir / "SHA256SUMS"
+        notes_file = sums_dir / "RELEASE_NOTES.md"
+
+        tag_entries = [e for e in entries_by_key.values() if e.get("release_tag") == tag]
+        notes_file.write_text(build_release_notes(repo_slug, branch, tag, tag_entries), encoding="utf-8")
+
+        upsert_release(tag, f"open-appsec NGINX attachments for {tag}", notes_file)
 
         # Preserve existing checksums on this release tag if re-running a subset
         existing_sums: Dict[str, str] = {}
@@ -103,7 +156,6 @@ def main() -> int:
         for tb in files:
             existing_sums[tb.name] = sha256_file(tb)
             upload_args.append(str(tb))
-            upload_args.append(str(tb.with_name(tb.name + ".sha256")))
 
         sums_lines = [f"{digest}  {name}" for name, digest in sorted(existing_sums.items())]
         sums_file.write_text("\n".join(sums_lines) + "\n", encoding="utf-8")
@@ -132,11 +184,10 @@ def main() -> int:
     supported_txt_path = index_dir / "supported-nginx.txt"
     supported_txt_path.write_text("\n".join(txt_lines) + "\n", encoding="utf-8")
 
-    ensure_release(
-        "supported-index",
-        "Supported NGINX Attachments Index",
-        "Rolling machine-readable index (`index.json` and `supported-nginx.txt`) for all published open-appsec NGINX attachment builds.",
-    )
+    index_notes_path = index_dir / "INDEX_NOTES.md"
+    index_notes_path.write_text(build_index_notes(repo_slug, branch, sorted_entries), encoding="utf-8")
+
+    upsert_release("supported-index", "Supported NGINX Attachments Index", index_notes_path)
     run(["gh", "release", "upload", "supported-index", "--clobber", str(index_json_path), str(supported_txt_path)])
     return 0
 

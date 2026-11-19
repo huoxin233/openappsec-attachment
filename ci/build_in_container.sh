@@ -33,12 +33,12 @@ EOF
 }
 
 install_rpm_deps() {
-    dnf install -y 'dnf-command(config-manager)' ca-certificates curl wget gnupg2 \
-        gcc gcc-c++ make cmake pkgconfig python3 dos2unix \
+    dnf install -y --allowerasing 'dnf-command(config-manager)' ca-certificates curl wget gnupg2 \
+        gcc gcc-c++ make cmake pkgconfig python3 \
         pcre2-devel libxml2-devel zlib-devel openssl-devel brotli-devel
-    dnf install -y pcre-devel || true
+    dnf install -y --allowerasing dos2unix pcre-devel || true
 
-    # EPEL provides GeoIP-devel on Rocky/RHEL 9 if needed by configure flags
+    # EPEL provides GeoIP-devel on Rocky/RHEL 9/10 if needed by configure flags
     dnf install -y epel-release || true
     dnf install -y GeoIP-devel || true
 
