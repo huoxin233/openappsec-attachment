@@ -12,7 +12,7 @@ on:
         type: boolean
   push:
     branches:
-      - main
+      - release-ci
     paths:
       - "attachments/**"
       - "core/**"
