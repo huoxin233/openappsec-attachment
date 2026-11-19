@@ -12,12 +12,18 @@ mkdir -p "${OUT_DIR}"
 
 install_deb_deps() {
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update
-    apt-get install -y --no-install-recommends \
+    APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=20 -o APT::Update::Error-Mode=any"
+    if ! apt-get ${APT_OPTS} update; then
+        if [ "${DISTRO}" = "ubuntu" ] && [ "${ARCH}" = "amd64" ] && [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sed -i 's|http://archive.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g; s|http://security.ubuntu.com/ubuntu|http://azure.archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+        fi
+        apt-get ${APT_OPTS} update
+    fi
+    apt-get ${APT_OPTS} install -y --no-install-recommends \
         ca-certificates curl wget gnupg2 lsb-release \
         build-essential cmake pkg-config python3 dos2unix \
         libpcre2-dev libxml2-dev zlib1g-dev libssl-dev libgeoip-dev libbrotli-dev
-    apt-get install -y --no-install-recommends libpcre3-dev || true
+    apt-get ${APT_OPTS} install -y --no-install-recommends libpcre3-dev || true
 
     install -d -m 0755 /etc/apt/keyrings
     curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg
@@ -28,8 +34,8 @@ Package: *
 Pin: origin nginx.org
 Pin-Priority: 900
 EOF
-    apt-get update
-    apt-get install -y --no-install-recommends "nginx=${PKG_VERSION}"
+    apt-get ${APT_OPTS} update
+    apt-get ${APT_OPTS} install -y --no-install-recommends "nginx=${PKG_VERSION}"
 }
 
 install_rpm_deps() {
