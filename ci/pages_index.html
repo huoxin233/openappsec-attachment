@@ -31,6 +31,7 @@
   </div>
 
   <pre><code>curl -fsSL https://raw.githubusercontent.com/{{REPO}}/{{BRANCH}}/install.sh | sudo bash</code></pre>
+  <p class="muted"><strong>What <code>install.sh</code> does:</strong> detects OS, arch &amp; installed <code>nginx</code> version &rarr; downloads matching tarball &rarr; verifies SHA-256 before unpacking &rarr; backs up existing <code>.so</code> files &amp; <code>nginx.conf</code> (auto-rollback on failure) &rarr; installs module &amp; <code>load_module</code> &rarr; runs <code>nginx -t</code> and reloads NGINX. Add <code>--dry-run</code> to verify without modifying files, or <code>--list</code> to list builds.</p>
 
   <div class="controls">
     <input id="q" type="search" placeholder="Filter by distro, codename, arch, or nginx version..." />

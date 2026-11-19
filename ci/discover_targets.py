@@ -165,6 +165,7 @@ def main() -> int:
                 not force_rebuild
                 and prev
                 and prev.get("nginx_pkg_version") == pkg_version
+                and "~" not in prev.get("url", "")
                 and (not attachment_sha or prev.get("attachment_commit") == attachment_sha)
             ):
                 print(f"Skipping {key}: already built for {pkg_version}", file=sys.stderr)

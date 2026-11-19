@@ -69,6 +69,12 @@ curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | b
 curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | bash -s -- --dry-run
 ```
 
+**What `install.sh` does:**
+1. Detects your OS, architecture, and installed `nginx` package version.
+2. Downloads the matching `.tar.gz` and verifies its `sha256sum` against `index.json` before unpacking.
+3. Backs up existing attachment `.so` files and `/etc/nginx/nginx.conf` (with automatic rollback on error).
+4. Installs `ngx_cp_attachment_module.so` + helper libraries, ensures `load_module` is in `/etc/nginx/nginx.conf`, runs `nginx -t`, and reloads NGINX.
+
 ### Manual Verification & Install
 ```bash
 sha256sum -c --ignore-missing SHA256SUMS
@@ -99,6 +105,8 @@ def build_index_notes(repo_slug: str, branch: str, entries: List[Dict[str, Any]]
 ```bash
 curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | sudo bash
 ```
+
+**What `install.sh` does:** detects OS/arch/`nginx` version → downloads matching tarball → verifies SHA-256 before unpacking → backs up existing `.so` files & `nginx.conf` (auto-rollback on error) → installs module + `load_module` → runs `nginx -t` and reloads NGINX. (Use `--dry-run` to test matching & checksum without modifying files.)
 
 ### List Available Builds
 ```bash
@@ -182,6 +190,16 @@ def main() -> int:
         upload_args.append(str(sums_file))
 
         run(["gh", "release", "upload", tag, "--clobber", *upload_args])
+
+        # Verify uploaded asset names & download URLs match index.json exactly
+        assets_res = run(["gh", "release", "view", tag, "--json", "assets"])
+        assets_by_name = {a["name"]: a["url"] for a in json.loads(assets_res.stdout).get("assets", [])}
+        for tb in files:
+            if tb.name not in assets_by_name:
+                raise RuntimeError(f"Uploaded asset {tb.name} not found on release {tag} (available: {list(assets_by_name)})")
+            for entry in entries_by_key.values():
+                if entry.get("release_tag") == tag and entry.get("tarball") == tb.name:
+                    entry["url"] = assets_by_name[tb.name]
 
     # Update rolling supported-index release
     sorted_entries = sorted(entries_by_key.values(), key=lambda x: x["key"])

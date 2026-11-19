@@ -153,7 +153,7 @@ cp -a "${BUILD_OUT}/nginx_attachment/lib/"* "${STAGE_DIR}/lib/"
 cp "${BUILD_OUT}/nginx_attachment/install-nginx-attachment.sh" "${STAGE_DIR}/install-nginx-attachment.sh"
 cp /tmp/nginx.ver "${STAGE_DIR}/nginx-V.txt"
 
-SAFE_PKG_VER="${PKG_VERSION//:/_}"
+SAFE_PKG_VER=$(printf '%s' "${PKG_VERSION}" | sed 's/[^A-Za-z0-9._-]/./g')
 TARBALL_NAME="openappsec-ngx-attachment_${SAFE_PKG_VER}_${DISTRO}-${CODENAME}-${CHANNEL}_${ARCH}.tar.gz"
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
