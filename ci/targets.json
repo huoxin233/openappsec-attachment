@@ -1,0 +1,184 @@
+{
+  "targets": [
+    {
+      "id": "ubuntu-resolute-mainline",
+      "distro": "ubuntu",
+      "codename": "resolute",
+      "channel": "mainline",
+      "pkg_type": "deb",
+      "image": "ubuntu:26.04",
+      "repo_url": "https://nginx.org/packages/mainline/ubuntu",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "ubuntu-resolute-stable",
+      "distro": "ubuntu",
+      "codename": "resolute",
+      "channel": "stable",
+      "pkg_type": "deb",
+      "image": "ubuntu:26.04",
+      "repo_url": "https://nginx.org/packages/ubuntu",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "ubuntu-noble-mainline",
+      "distro": "ubuntu",
+      "codename": "noble",
+      "channel": "mainline",
+      "pkg_type": "deb",
+      "image": "ubuntu:24.04",
+      "repo_url": "https://nginx.org/packages/mainline/ubuntu",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "ubuntu-noble-stable",
+      "distro": "ubuntu",
+      "codename": "noble",
+      "channel": "stable",
+      "pkg_type": "deb",
+      "image": "ubuntu:24.04",
+      "repo_url": "https://nginx.org/packages/ubuntu",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "ubuntu-jammy-mainline",
+      "distro": "ubuntu",
+      "codename": "jammy",
+      "channel": "mainline",
+      "pkg_type": "deb",
+      "image": "ubuntu:22.04",
+      "repo_url": "https://nginx.org/packages/mainline/ubuntu",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "ubuntu-jammy-stable",
+      "distro": "ubuntu",
+      "codename": "jammy",
+      "channel": "stable",
+      "pkg_type": "deb",
+      "image": "ubuntu:22.04",
+      "repo_url": "https://nginx.org/packages/ubuntu",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "debian-trixie-mainline",
+      "distro": "debian",
+      "codename": "trixie",
+      "channel": "mainline",
+      "pkg_type": "deb",
+      "image": "debian:trixie",
+      "repo_url": "https://nginx.org/packages/mainline/debian",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "debian-trixie-stable",
+      "distro": "debian",
+      "codename": "trixie",
+      "channel": "stable",
+      "pkg_type": "deb",
+      "image": "debian:trixie",
+      "repo_url": "https://nginx.org/packages/debian",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "debian-bookworm-mainline",
+      "distro": "debian",
+      "codename": "bookworm",
+      "channel": "mainline",
+      "pkg_type": "deb",
+      "image": "debian:bookworm",
+      "repo_url": "https://nginx.org/packages/mainline/debian",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "debian-bookworm-stable",
+      "distro": "debian",
+      "codename": "bookworm",
+      "channel": "stable",
+      "pkg_type": "deb",
+      "image": "debian:bookworm",
+      "repo_url": "https://nginx.org/packages/debian",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "rocky-10-mainline",
+      "distro": "rocky",
+      "codename": "el10",
+      "channel": "mainline",
+      "pkg_type": "rpm",
+      "image": "rockylinux:10",
+      "repo_url": "https://nginx.org/packages/mainline/rhel/10",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "rocky-10-stable",
+      "distro": "rocky",
+      "codename": "el10",
+      "channel": "stable",
+      "pkg_type": "rpm",
+      "image": "rockylinux:10",
+      "repo_url": "https://nginx.org/packages/rhel/10",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "rocky-9-mainline",
+      "distro": "rocky",
+      "codename": "el9",
+      "channel": "mainline",
+      "pkg_type": "rpm",
+      "image": "rockylinux:9",
+      "repo_url": "https://nginx.org/packages/mainline/rhel/9",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "rocky-9-stable",
+      "distro": "rocky",
+      "codename": "el9",
+      "channel": "stable",
+      "pkg_type": "rpm",
+      "image": "rockylinux:9",
+      "repo_url": "https://nginx.org/packages/rhel/9",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "alpine-3.24-mainline",
+      "distro": "alpine",
+      "codename": "v3.24",
+      "channel": "mainline",
+      "pkg_type": "apk",
+      "image": "alpine:3.24",
+      "repo_url": "https://nginx.org/packages/mainline/alpine/v3.24/main",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "alpine-3.24-stable",
+      "distro": "alpine",
+      "codename": "v3.24",
+      "channel": "stable",
+      "pkg_type": "apk",
+      "image": "alpine:3.24",
+      "repo_url": "https://nginx.org/packages/alpine/v3.24/main",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "alpine-3.21-mainline",
+      "distro": "alpine",
+      "codename": "v3.21",
+      "channel": "mainline",
+      "pkg_type": "apk",
+      "image": "alpine:3.21",
+      "repo_url": "https://nginx.org/packages/mainline/alpine/v3.21/main",
+      "arches": ["amd64", "arm64"]
+    },
+    {
+      "id": "alpine-3.21-stable",
+      "distro": "alpine",
+      "codename": "v3.21",
+      "channel": "stable",
+      "pkg_type": "apk",
+      "image": "alpine:3.21",
+      "repo_url": "https://nginx.org/packages/alpine/v3.21/main",
+      "arches": ["amd64", "arm64"]
+    }
+  ]
+}

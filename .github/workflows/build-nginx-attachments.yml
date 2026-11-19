@@ -1,0 +1,119 @@
+name: Build NGINX Attachments
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: "Force rebuild all targets even if already indexed"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - "attachments/**"
+      - "core/**"
+      - "ci/**"
+      - ".github/workflows/build-nginx-attachments.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-nginx-attachments-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      has_targets: ${{ steps.discover.outputs.has_targets }}
+      attachment_sha: ${{ steps.discover.outputs.attachment_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Discover NGINX targets to build
+        id: discover
+        env:
+          FORCE_REBUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.force_rebuild || 'false' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ATTACHMENT_SHA=$(git log -n 1 --format=%H -- attachments/ core/)
+          export ATTACHMENT_SHA
+          echo "attachment_sha=${ATTACHMENT_SHA}" >> "${GITHUB_OUTPUT}"
+          matrix=$(python3 ci/discover_targets.py ci/targets.json)
+          echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
+          count=$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])["include"]))' "${matrix}")
+          echo "Targets queued: ${count}"
+          if [ "${count}" -gt 0 ]; then
+            echo "has_targets=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "has_targets=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.has_targets == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and smoke-test in ${{ matrix.image }} (${{ matrix.arch }})
+        run: |
+          chmod +x ci/build_in_container.sh
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            -e TARGET_KEY="${{ matrix.key }}" \
+            -e TARGET_ID="${{ matrix.target_id }}" \
+            -e DISTRO="${{ matrix.distro }}" \
+            -e CODENAME="${{ matrix.codename }}" \
+            -e CHANNEL="${{ matrix.channel }}" \
+            -e PKG_TYPE="${{ matrix.pkg_type }}" \
+            -e REPO_URL="${{ matrix.repo_url }}" \
+            -e ARCH="${{ matrix.arch }}" \
+            -e PKG_VERSION="${{ matrix.pkg_version }}" \
+            -e NGINX_VERSION="${{ matrix.nginx_version }}" \
+            -e ATTACHMENT_COMMIT="${{ needs.discover.outputs.attachment_sha }}" \
+            "${{ matrix.image }}" \
+            sh -c 'if command -v bash >/dev/null 2>&1; then exec bash ci/build_in_container.sh; else apk add --no-cache bash >/dev/null && exec bash ci/build_in_container.sh; fi'
+
+      - name: Upload built tarball for publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: attachment-${{ matrix.key }}
+          path: dist/*
+          retention-days: 1
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'failure') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Verify checksums and publish GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 ci/publish_release.py artifacts
