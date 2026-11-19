@@ -76,7 +76,7 @@ if [ "${SKIP_NGINX_GPG_VERIFY:-false}" != "true" ]; then
         gpg --batch --import "${NGINX_PGP_KEYS_DIR}"/*.key
     else
         # Fetch official NGINX maintainer PGP keys over verified HTTPS
-        for key in arut pluknet sb thresh mdounin; do
+        for key in arut pluknet sb thresh; do
             if command -v curl >/dev/null 2>&1; then
                 curl -fsSL -o "${GNUPGHOME}/${key}.key" "https://nginx.org/keys/${key}.key" || true
             else
