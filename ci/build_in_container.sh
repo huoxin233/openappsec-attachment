@@ -85,7 +85,7 @@ export MAKEFLAGS="-j$(nproc)"
 chmod +x ./attachments/nginx/ngx_module/nginx_version_configuration.sh ./attachments/nginx/ngx_module/nginx_version_extractor.sh
 ./attachments/nginx/ngx_module/nginx_version_configuration.sh --conf /tmp/nginx.ver "${BUILD_OUT}"
 
-cmake -DCMAKE_INSTALL_PREFIX="${BUILD_OUT}" .
+cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX="${BUILD_OUT}" .
 make -j"$(nproc)"
 make install
 
