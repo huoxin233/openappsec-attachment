@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Verify built artifacts, publish per-version GitHub Releases, and update supported-index."""
+"""Verify built artifacts, publish per-version GitHub Releases, and stage GitHub Pages files."""
 
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -42,6 +43,11 @@ def upsert_release(tag: str, title: str, notes_file: Path) -> None:
         run(["gh", "release", "edit", tag, "--title", title, "--notes-file", str(notes_file)])
 
 
+def pages_base_url(repo_slug: str) -> str:
+    owner, _, repo = repo_slug.partition("/")
+    return f"https://{owner}.github.io/{repo}"
+
+
 def build_release_notes(repo_slug: str, branch: str, tag: str, entries: List[Dict[str, Any]]) -> str:
     rows = "\n".join(
         f"| `{e['key']}` | `{e['distro']}` `{e['codename']}` | `{e['arch']}` | `{e['nginx_pkg_version']}` | `{e['sha256'][:16]}...` |"
@@ -78,7 +84,16 @@ Then copy `lib/libngx_module.so` to `/usr/lib/nginx/modules/ngx_cp_attachment_mo
 
 
 def build_index_notes(repo_slug: str, branch: str, entries: List[Dict[str, Any]]) -> str:
-    return f"""Rolling machine-readable index (`index.json` and `supported-nginx.txt`) covering **{len(entries)}** published NGINX attachment builds.
+    pages_url = pages_base_url(repo_slug)
+    rows = "\n".join(
+        f"| `{e['key']}` | `{e['distro']}` `{e['codename']}` | `{e['arch']}` | `{e['nginx_pkg_version']}` | `{e['sha256'][:16]}...` | [tar.gz]({e['url']}) |"
+        for e in sorted(entries, key=lambda x: x["key"])
+    )
+    return f"""Rolling index covering **{len(entries)}** published NGINX attachment builds.
+
+* Searchable Web Index (GitHub Pages): {pages_url}/
+* Plain-text inline list: {pages_url}/supported-nginx.txt
+* JSON inline index: {pages_url}/index.json
 
 ### Quick Install / Upgrade
 ```bash
@@ -89,6 +104,11 @@ curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | s
 ```bash
 curl -fsSL https://raw.githubusercontent.com/{repo_slug}/{branch}/install.sh | bash -s -- --list
 ```
+
+### Supported Builds
+| Key | OS | Arch | NGINX Package | SHA-256 (prefix) | Download |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+{rows}
 """
 
 
@@ -189,6 +209,17 @@ def main() -> int:
 
     upsert_release("supported-index", "Supported NGINX Attachments Index", index_notes_path)
     run(["gh", "release", "upload", "supported-index", "--clobber", str(index_json_path), str(supported_txt_path)])
+
+    # Stage static files for GitHub Pages (inline text/json + searchable web index)
+    pages_dir = artifacts_dir / "_pages"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(index_json_path, pages_dir / "index.json")
+    shutil.copy2(supported_txt_path, pages_dir / "supported-nginx.txt")
+
+    template_path = Path(__file__).with_name("pages_index.html")
+    html = template_path.read_text(encoding="utf-8")
+    html = html.replace("{{REPO}}", repo_slug).replace("{{BRANCH}}", branch)
+    (pages_dir / "index.html").write_text(html, encoding="utf-8")
     return 0
 
 

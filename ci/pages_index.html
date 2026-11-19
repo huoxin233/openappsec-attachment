@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>open-appsec NGINX Attachments Index</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    body { max-width: 1120px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    h1 { margin-bottom: 0.25rem; }
+    .muted { opacity: 0.75; margin-top: 0; }
+    pre { padding: 0.75rem 1rem; border-radius: 8px; overflow-x: auto; border: 1px solid rgba(128,128,128,0.3); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+    .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+    input, select { padding: 0.45rem 0.65rem; border-radius: 6px; border: 1px solid rgba(128,128,128,0.4); background: transparent; color: inherit; }
+    input { flex: 1 1 240px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.92rem; }
+    th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid rgba(128,128,128,0.25); }
+    th { font-weight: 600; }
+    .links { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+  <h1>open-appsec NGINX Attachments</h1>
+  <p class="muted">Automated, PGP-verified builds for <code>{{REPO}}</code></p>
+
+  <div class="links">
+    <a href="supported-nginx.txt">supported-nginx.txt (plain text)</a>
+    <a href="index.json">index.json (JSON)</a>
+    <a href="https://github.com/{{REPO}}/releases">GitHub Releases</a>
+  </div>
+
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/{{REPO}}/{{BRANCH}}/install.sh | sudo bash</code></pre>
+
+  <div class="controls">
+    <input id="q" type="search" placeholder="Filter by distro, codename, arch, or nginx version..." />
+    <select id="distroFilter"><option value="">All distros</option></select>
+    <select id="archFilter"><option value="">All arches</option></select>
+    <select id="channelFilter"><option value="">All channels</option></select>
+  </div>
+
+  <div id="count" class="muted">Loading index...</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>OS</th>
+        <th>Channel</th>
+        <th>Arch</th>
+        <th>NGINX Package</th>
+        <th>SHA-256 (prefix)</th>
+        <th>Download</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <script>
+    let allItems = [];
+    const qEl = document.getElementById("q");
+    const distroEl = document.getElementById("distroFilter");
+    const archEl = document.getElementById("archFilter");
+    const channelEl = document.getElementById("channelFilter");
+    const rowsEl = document.getElementById("rows");
+    const countEl = document.getElementById("count");
+
+    function populateSelect(el, values) {
+      for (const v of [...new Set(values)].sort()) {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        el.appendChild(opt);
+      }
+    }
+
+    function cell(text, isCode) {
+      const td = document.createElement("td");
+      if (isCode) {
+        const c = document.createElement("code");
+        c.textContent = text;
+        td.appendChild(c);
+      } else {
+        td.textContent = text;
+      }
+      return td;
+    }
+
+    function render() {
+      const q = qEl.value.trim().toLowerCase();
+      const d = distroEl.value;
+      const a = archEl.value;
+      const c = channelEl.value;
+
+      const filtered = allItems.filter(e => {
+        if (d && e.distro !== d) return false;
+        if (a && e.arch !== a) return false;
+        if (c && e.channel !== c) return false;
+        if (q) {
+          const hay = `${e.key} ${e.distro} ${e.codename} ${e.channel} ${e.arch} ${e.nginx_pkg_version}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      rowsEl.replaceChildren();
+      for (const e of filtered) {
+        const tr = document.createElement("tr");
+        tr.appendChild(cell(e.key, true));
+        tr.appendChild(cell(`${e.distro} ${e.codename}`, false));
+        tr.appendChild(cell(e.channel, false));
+        tr.appendChild(cell(e.arch, true));
+        tr.appendChild(cell(e.nginx_pkg_version, true));
+        const shaTd = cell(e.sha256.slice(0, 16) + "...", true);
+        shaTd.title = e.sha256;
+        tr.appendChild(shaTd);
+
+        const dlTd = document.createElement("td");
+        const link = document.createElement("a");
+        link.href = e.url;
+        link.textContent = "tar.gz";
+        dlTd.appendChild(link);
+        tr.appendChild(dlTd);
+
+        rowsEl.appendChild(tr);
+      }
+      countEl.textContent = `Showing ${filtered.length} of ${allItems.length} builds.`;
+    }
+
+    fetch("index.json")
+      .then(r => r.json())
+      .then(data => {
+        allItems = data.attachments || [];
+        populateSelect(distroEl, allItems.map(e => e.distro));
+        populateSelect(archEl, allItems.map(e => e.arch));
+        populateSelect(channelEl, allItems.map(e => e.channel));
+        render();
+      })
+      .catch(err => {
+        countEl.textContent = `Failed to load index.json: ${err}`;
+      });
+
+    for (const el of [qEl, distroEl, archEl, channelEl]) {
+      el.addEventListener("input", render);
+      el.addEventListener("change", render);
+    }
+  </script>
+</body>
+</html>
