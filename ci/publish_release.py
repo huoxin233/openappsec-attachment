@@ -93,12 +93,13 @@ def backfill_missing_release(tag: str) -> List[Dict[str, Any]]:
     return recovered
 
 
-def upsert_release(tag: str, title: str, notes_file: Path) -> None:
+def upsert_release(tag: str, title: str, notes_file: Path, is_latest: bool = False) -> None:
+    latest_flag = "--latest" if is_latest else "--latest=false"
     res = run(["gh", "release", "view", tag], check=False)
     if res.returncode != 0:
-        run(["gh", "release", "create", tag, "--title", title, "--notes-file", str(notes_file)])
+        run(["gh", "release", "create", tag, latest_flag, "--title", title, "--notes-file", str(notes_file)])
     else:
-        run(["gh", "release", "edit", tag, "--title", title, "--notes-file", str(notes_file)])
+        run(["gh", "release", "edit", tag, latest_flag, "--title", title, "--notes-file", str(notes_file)])
 
 
 def pages_base_url(repo_slug: str) -> str:
@@ -270,7 +271,7 @@ def main() -> int:
         tag_entries = [e for e in history_by_id.values() if e.get("release_tag") == tag]
         notes_file.write_text(build_release_notes(repo_slug, branch, tag, tag_entries), encoding="utf-8")
 
-        upsert_release(tag, f"open-appsec NGINX attachments for {tag}", notes_file)
+        upsert_release(tag, f"open-appsec NGINX attachments for {tag}", notes_file, is_latest=False)
 
         existing_sums: Dict[str, str] = {}
         dl_res = run(["gh", "release", "download", tag, "-p", "SHA256SUMS", "-D", str(sums_dir), "--clobber"], check=False)
@@ -352,7 +353,7 @@ def main() -> int:
     index_notes_path = index_dir / "INDEX_NOTES.md"
     index_notes_path.write_text(build_index_notes(repo_slug, branch, latest_entries, len(all_history)), encoding="utf-8")
 
-    upsert_release("supported-index", "Supported NGINX Attachments Index", index_notes_path)
+    upsert_release("supported-index", "Supported NGINX Attachments Index", index_notes_path, is_latest=True)
     run(
         [
             "gh", "release", "upload", "supported-index", "--clobber",
