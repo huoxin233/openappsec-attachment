@@ -9,6 +9,7 @@ ACTION="install"
 CHANNEL=""
 KEY_OVERRIDE=""
 DRY_RUN="false"
+LIST_ALL="false"
 
 usage() {
     cat <<'EOF'
@@ -18,7 +19,8 @@ Options:
   --repo <owner/repo>   GitHub repository hosting releases (or set OPENAPPSEC_ATTACHMENT_REPO)
   --channel <name>      Filter by nginx.org channel (mainline or stable)
   --key <target-key>    Explicitly select a build key from index.json
-  --list                List all available prebuilt attachments in index.json
+  --list                List available builds (--all to include historical builds)
+  --all                 Include historical builds when used with --list
   --dry-run             Verify match and SHA-256 without modifying system files
   -h, --help            Show this help message
 EOF
@@ -40,6 +42,10 @@ while [ $# -gt 0 ]; do
             ;;
         --list)
             ACTION="list"
+            shift
+            ;;
+        --all)
+            LIST_ALL="true"
             shift
             ;;
         --dry-run)
@@ -71,13 +77,18 @@ for cmd in curl python3 tar sha256sum; do
 done
 
 INDEX_URL="https://github.com/${DEFAULT_REPO}/releases/download/supported-index/index.json"
+HISTORY_URL="https://github.com/${DEFAULT_REPO}/releases/download/supported-index/history.json"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 if [ "${ACTION}" != "list" ]; then
     echo "[1/7] Fetching release index from ${DEFAULT_REPO}..."
 fi
-curl -fsSL -o "${TMP_DIR}/index.json" "${INDEX_URL}"
+if [ "${ACTION}" = "list" ] && [ "${LIST_ALL}" = "true" ]; then
+    curl -fsSL -o "${TMP_DIR}/index.json" "${HISTORY_URL}" || curl -fsSL -o "${TMP_DIR}/index.json" "${INDEX_URL}"
+else
+    curl -fsSL -o "${TMP_DIR}/index.json" "${INDEX_URL}"
+fi
 
 if [ "${ACTION}" = "list" ]; then
     python3 - "${TMP_DIR}/index.json" <<'PY'
@@ -134,7 +145,8 @@ fi
 
 NGINX_SHORT_VER=$(nginx -v 2>&1 | sed -n 's/.*nginx\/\([0-9.]*\).*/\1/p')
 
-MATCH_INFO=$(python3 - "${TMP_DIR}/index.json" "${DISTRO}" "${CODENAME}" "${ARCH}" "${NGINX_PKG_VER}" "${NGINX_SHORT_VER}" "${CHANNEL}" "${KEY_OVERRIDE}" <<'PY'
+find_match() {
+    python3 - "$1" "${DISTRO}" "${CODENAME}" "${ARCH}" "${NGINX_PKG_VER}" "${NGINX_SHORT_VER}" "${CHANNEL}" "${KEY_OVERRIDE}" <<'PY'
 import json, sys
 index_path, distro, codename, arch, pkg_ver, short_ver, channel, key_override = sys.argv[1:]
 items = json.load(open(index_path)).get("attachments", [])
@@ -155,27 +167,36 @@ else:
     ]
 
 if not matches:
-    sys.stderr.write(
-        f"ERROR: No matching attachment build found for distro={distro} codename={codename} "
-        f"arch={arch} pkg_ver={pkg_ver or 'unknown'} nginx={short_ver}\n"
-        f"Run with --list to inspect available builds.\n"
-    )
-    sys.exit(1)
+    sys.exit(2)
 
 if len(matches) > 1:
-    # Prefer exact pkg_ver match if multiple channels exist
     exact = [e for e in matches if e.get("nginx_pkg_version") == pkg_ver]
     if len(exact) == 1:
         matches = exact
     else:
-        keys = ", ".join(e["key"] for e in matches)
+        keys = ", ".join(f"{e['key']} ({e['nginx_pkg_version']})" for e in matches[:5])
         sys.stderr.write(f"ERROR: Multiple builds matched ({keys}). Re-run with --channel or --key.\n")
         sys.exit(1)
 
 e = matches[0]
 print(f"{e['key']}|{e['url']}|{e['sha256']}|{e['nginx_pkg_version']}")
 PY
-)
+}
+
+MATCH_INFO=""
+rc=0
+MATCH_INFO=$(find_match "${TMP_DIR}/index.json") || rc=$?
+if [ "${rc}" -eq 2 ] && curl -fsSL -o "${TMP_DIR}/history.json" "${HISTORY_URL}" 2>/dev/null; then
+    rc=0
+    MATCH_INFO=$(find_match "${TMP_DIR}/history.json") || rc=$?
+fi
+if [ "${rc}" -ne 0 ]; then
+    if [ "${rc}" -eq 2 ]; then
+        echo "ERROR: No matching attachment build found for distro=${DISTRO} codename=${CODENAME} arch=${ARCH} pkg_ver=${NGINX_PKG_VER:-unknown} nginx=${NGINX_SHORT_VER}" >&2
+        echo "Run with --list --all to inspect available builds." >&2
+    fi
+    exit 1
+fi
 
 IFS='|' read -r MATCH_KEY MATCH_URL MATCH_SHA256 MATCH_PKG_VER <<< "${MATCH_INFO}"
 echo "[2/7] Matched build: ${MATCH_KEY} (nginx ${MATCH_PKG_VER})"
