@@ -10,6 +10,27 @@ OUT_DIR="${WORKDIR}/dist"
 BUILD_OUT="${WORKDIR}/build_out"
 mkdir -p "${OUT_DIR}"
 
+fetch_verified_nginx_signing_key() {
+    local dest_key="$1"
+    local tmp_gpg
+    tmp_gpg=$(mktemp -d)
+    chmod 700 "${tmp_gpg}"
+    curl -fsSL -o "${dest_key}" https://nginx.org/keys/nginx_signing.key
+
+    # Verify imported key contains only official NGINX signing key fingerprints
+    local fprs
+    fprs=$(GNUPGHOME="${tmp_gpg}" gpg --batch --show-keys --with-colons "${dest_key}" | awk -F: '$1 == "fpr" {print $10}')
+    rm -rf "${tmp_gpg}"
+    if [ -z "${fprs}" ]; then
+        echo "ERROR: No PGP fingerprints found in nginx_signing.key" >&2
+        return 1
+    fi
+    if ! printf '%s\n' "${fprs}" | grep -Eq '^(573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62|8540A6F18833A80E9C1653A42FD21310B49F6B46|9E9BE90EACBCDE69FE9B204CBCDCD8A38D88A2B3)$'; then
+        echo "ERROR: nginx_signing.key failed pinned fingerprint verification" >&2
+        return 1
+    fi
+}
+
 install_deb_deps() {
     export DEBIAN_FRONTEND=noninteractive
     APT_OPTS="-o Acquire::Retries=5 -o Acquire::http::Timeout=20 -o APT::Update::Error-Mode=any"
@@ -56,7 +77,9 @@ install_deb_deps() {
     apt_install_retry libpcre3-dev || true
 
     install -d -m 0755 /etc/apt/keyrings
-    curl -fsSL https://nginx.org/keys/nginx_signing.key | gpg --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg
+    fetch_verified_nginx_signing_key /tmp/nginx_signing.key
+    gpg --batch --dearmor -o /etc/apt/keyrings/nginx-archive-keyring.gpg /tmp/nginx_signing.key
+    rm -f /tmp/nginx_signing.key
     chmod 0644 /etc/apt/keyrings/nginx-archive-keyring.gpg
     echo "deb [signed-by=/etc/apt/keyrings/nginx-archive-keyring.gpg] ${REPO_URL} ${CODENAME} nginx" > /etc/apt/sources.list.d/nginx.list
     cat <<'EOF' > /etc/apt/preferences.d/99nginx
@@ -78,17 +101,19 @@ install_rpm_deps() {
     dnf install -y epel-release || true
     dnf install -y GeoIP-devel || true
 
+    fetch_verified_nginx_signing_key /tmp/nginx_signing.key
+    rpm --import /tmp/nginx_signing.key
     cat <<EOF > /etc/yum.repos.d/nginx.repo
 [nginx-target]
 name=nginx target repo
 baseurl=${REPO_URL}/\$basearch/
 gpgcheck=1
 enabled=1
-gpgkey=https://nginx.org/keys/nginx_signing.key
+gpgkey=file:///tmp/nginx_signing.key
 module_hotfixes=true
 EOF
-    rpm --import https://nginx.org/keys/nginx_signing.key
     dnf install -y "nginx-${PKG_VERSION}"
+    rm -f /tmp/nginx_signing.key
 }
 
 install_apk_deps() {
