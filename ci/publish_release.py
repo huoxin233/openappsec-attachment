@@ -86,7 +86,7 @@ sha256sum -c --ignore-missing SHA256SUMS
 gh attestation verify openappsec-ngx-attachment_*.tar.gz --repo {repo_slug}
 tar -xzf openappsec-ngx-attachment_*.tar.gz
 ```
-View all SLSA build provenance records under [Actions → Attestations](https://github.com/{repo_slug}/actions/attestations).
+View all SLSA build provenance records under [Attestations](https://github.com/{repo_slug}/attestations).
 Then copy `lib/libngx_module.so` to `/usr/lib/nginx/modules/ngx_cp_attachment_module.so` (or `/usr/lib64/nginx/modules/` on RHEL/Rocky), copy the remaining `lib/*.so` to `/usr/lib/` (or `/usr/lib64/`), add `load_module .../ngx_cp_attachment_module.so;` to `/etc/nginx/nginx.conf`, verify with `nginx -t`, and reload NGINX.
 
 ### Included Targets
@@ -107,7 +107,7 @@ def build_index_notes(repo_slug: str, branch: str, entries: List[Dict[str, Any]]
 * Searchable Web Index (GitHub Pages): {pages_url}/
 * Plain-text inline list: {pages_url}/supported-nginx.txt
 * JSON inline index: {pages_url}/index.json
-* Build Provenance Attestations: https://github.com/{repo_slug}/actions/attestations
+* Build Provenance Attestations: https://github.com/{repo_slug}/attestations
 
 ### Quick Install / Upgrade
 ```bash
