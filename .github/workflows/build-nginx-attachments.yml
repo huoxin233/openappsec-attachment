@@ -18,6 +18,8 @@ on:
       - "core/**"
       - "ci/**"
       - ".github/workflows/build-nginx-attachments.yml"
+  release:
+    types: [deleted]
 
 permissions:
   contents: read
@@ -28,6 +30,7 @@ concurrency:
 
 jobs:
   discover:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -102,8 +105,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
-    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'failure') }}
+    needs: [discover, build]
+    if: ${{ !cancelled() && (github.event_name == 'release' || needs.build.result == 'success' || needs.build.result == 'failure') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -115,9 +118,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: release-ci
           persist-credentials: false
 
       - name: Download build artifacts
+        if: github.event_name != 'release'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -127,8 +132,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_BRANCH: release-ci
         run: |
-          python3 ci/publish_release.py artifacts
+          if [ "${{ github.event_name }}" = "release" ]; then
+            python3 ci/publish_release.py --sync-only artifacts
+          else
+            python3 ci/publish_release.py artifacts
+          fi
           if [ -f artifacts/_pages/index.html ]; then
             echo "has_pages=true" >> "${GITHUB_OUTPUT}"
           else
@@ -136,7 +146,7 @@ jobs:
           fi
 
       - name: Generate build provenance attestations
-        if: steps.publish.outputs.has_pages == 'true'
+        if: github.event_name != 'release' && steps.publish.outputs.has_pages == 'true'
         uses: actions/attest@v4
         with:
           subject-path: "artifacts/**/*.tar.gz"

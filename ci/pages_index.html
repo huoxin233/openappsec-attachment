@@ -12,8 +12,9 @@
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; }
     .cmd-box { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.9rem; border-radius: 8px; border: 1px solid rgba(128,128,128,0.35); margin: 0.75rem 0; overflow-x: auto; }
     .cmd-box code { flex: 1; white-space: nowrap; }
-    button.copy-btn { padding: 0.25rem 0.55rem; font-size: 0.8rem; border-radius: 5px; border: 1px solid rgba(128,128,128,0.4); background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
-    button.copy-btn:hover { background: rgba(128,128,128,0.15); }
+    button.btn { padding: 0.3rem 0.65rem; font-size: 0.82rem; border-radius: 5px; border: 1px solid rgba(128,128,128,0.4); background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
+    button.btn:hover:not(:disabled) { background: rgba(128,128,128,0.15); }
+    button.btn:disabled { opacity: 0.5; cursor: default; }
     details { margin: 0.5rem 0 1rem; padding: 0.5rem 0.85rem; border-radius: 8px; border: 1px solid rgba(128,128,128,0.25); }
     details summary { cursor: pointer; font-weight: 500; }
     details ol { margin: 0.5rem 0 0.25rem; padding-left: 1.25rem; }
@@ -25,6 +26,7 @@
     th { font-weight: 600; }
     .sha-cell { display: inline-flex; align-items: center; gap: 0.4rem; }
     .links { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.75rem 0; }
+    .footer-actions { display: flex; align-items: center; gap: 0.75rem; margin: 1rem 0; }
   </style>
 </head>
 <body>
@@ -32,35 +34,37 @@
   <p class="muted">Automated, PGP-verified &amp; SLSA-attested builds for <code>{{REPO}}</code></p>
 
   <div class="links">
-    <a href="supported-nginx.txt">supported-nginx.txt (plain text)</a>
-    <a href="index.json">index.json (JSON)</a>
+    <a href="supported-nginx.txt">supported-nginx.txt (all text)</a>
+    <a href="index.json">index.json (latest)</a>
+    <a href="history.json">history.json (all)</a>
     <a href="https://github.com/{{REPO}}/releases">GitHub Releases</a>
     <a href="https://github.com/{{REPO}}/attestations">Attestations</a>
   </div>
 
   <div class="cmd-box">
     <code id="installCmd">curl -fsSL https://raw.githubusercontent.com/{{REPO}}/{{BRANCH}}/install.sh | sudo bash</code>
-    <button type="button" class="copy-btn" id="copyInstallBtn">Copy</button>
+    <button type="button" class="btn" id="copyInstallBtn">Copy</button>
   </div>
 
   <details>
-    <summary>What <code>install.sh</code> does (and extra flags: <code>--dry-run</code>, <code>--list</code>)</summary>
+    <summary>What <code>install.sh</code> does (and extra flags: <code>--dry-run</code>, <code>--list</code>, <code>--all</code>)</summary>
     <ol>
       <li>Detects your OS, architecture, and installed <code>nginx</code> package version.</li>
-      <li>Downloads the matching <code>.tar.gz</code> and verifies its SHA-256 against <code>index.json</code> before unpacking.</li>
+      <li>Downloads the matching <code>.tar.gz</code> and verifies its SHA-256 against <code>index.json</code> (or <code>history.json</code>) before unpacking.</li>
       <li>Backs up existing attachment <code>.so</code> files and <code>/etc/nginx/nginx.conf</code> (auto-rollback on error).</li>
       <li>Installs <code>ngx_cp_attachment_module.so</code> and helper libraries, adds <code>load_module</code> if missing, runs <code>nginx -t</code>, and reloads NGINX.</li>
     </ol>
   </details>
 
   <div class="controls">
-    <input id="q" type="search" placeholder="Filter by distro, codename, arch, or nginx version..." />
+    <input id="q" type="search" placeholder="Search distro, codename, arch, or nginx version (auto-searches all history)..." />
     <select id="distroFilter"><option value="">All distros</option></select>
     <select id="archFilter"><option value="">All arches</option></select>
     <select id="channelFilter"><option value="">All channels</option></select>
+    <button type="button" class="btn" id="loadHistoryBtn">Load all history</button>
   </div>
 
-  <div id="count" class="muted">Loading index...</div>
+  <div id="count" class="muted">Loading latest builds...</div>
   <table>
     <thead>
       <tr>
@@ -76,14 +80,25 @@
     <tbody id="rows"></tbody>
   </table>
 
+  <div class="footer-actions">
+    <button type="button" class="btn" id="loadMoreBtn" hidden>Load more</button>
+  </div>
+
   <script>
-    let allItems = [];
+    const PAGE_SIZE = 36;
+    let latestItems = [];
+    let historyItems = null;
+    let historyPromise = null;
+    let visibleLimit = PAGE_SIZE;
+
     const qEl = document.getElementById("q");
     const distroEl = document.getElementById("distroFilter");
     const archEl = document.getElementById("archFilter");
     const channelEl = document.getElementById("channelFilter");
     const rowsEl = document.getElementById("rows");
     const countEl = document.getElementById("count");
+    const loadHistoryBtn = document.getElementById("loadHistoryBtn");
+    const loadMoreBtn = document.getElementById("loadMoreBtn");
 
     function copyWithFeedback(text, btn) {
       const done = () => {
@@ -113,12 +128,16 @@
     });
 
     function populateSelect(el, values) {
+      const prev = el.value;
+      const first = el.options[0];
+      el.replaceChildren(first);
       for (const v of [...new Set(values)].sort()) {
         const opt = document.createElement("option");
         opt.value = v;
         opt.textContent = v;
         el.appendChild(opt);
       }
+      el.value = prev;
     }
 
     function cell(text, isCode) {
@@ -142,7 +161,7 @@
       code.textContent = fullHash.slice(0, 12) + "...";
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "copy-btn";
+      btn.className = "btn";
       btn.textContent = "Copy";
       btn.addEventListener("click", () => copyWithFeedback(fullHash, btn));
       wrap.appendChild(code);
@@ -151,13 +170,42 @@
       return td;
     }
 
+    function ensureHistoryLoaded() {
+      if (historyItems !== null) return Promise.resolve(historyItems);
+      if (historyPromise) return historyPromise;
+      loadHistoryBtn.disabled = true;
+      loadHistoryBtn.textContent = "Loading history...";
+      historyPromise = fetch("history.json")
+        .then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        })
+        .then(data => {
+          historyItems = data.attachments || [];
+          populateSelect(distroEl, historyItems.map(e => e.distro));
+          populateSelect(archEl, historyItems.map(e => e.arch));
+          populateSelect(channelEl, historyItems.map(e => e.channel));
+          loadHistoryBtn.textContent = `History loaded (${historyItems.length})`;
+          return historyItems;
+        })
+        .catch(() => {
+          historyItems = null;
+          historyPromise = null;
+          loadHistoryBtn.disabled = false;
+          loadHistoryBtn.textContent = "Load all history";
+          return latestItems;
+        });
+      return historyPromise;
+    }
+
     function render() {
       const q = qEl.value.trim().toLowerCase();
       const d = distroEl.value;
       const a = archEl.value;
       const c = channelEl.value;
 
-      const filtered = allItems.filter(e => {
+      const source = historyItems !== null ? historyItems : latestItems;
+      const filtered = source.filter(e => {
         if (d && e.distro !== d) return false;
         if (a && e.arch !== a) return false;
         if (c && e.channel !== c) return false;
@@ -168,8 +216,9 @@
         return true;
       });
 
+      const shown = filtered.slice(0, visibleLimit);
       rowsEl.replaceChildren();
-      for (const e of filtered) {
+      for (const e of shown) {
         const tr = document.createElement("tr");
         tr.appendChild(cell(e.key, true));
         tr.appendChild(cell(`${e.distro} ${e.codename}`, false));
@@ -187,25 +236,59 @@
 
         rowsEl.appendChild(tr);
       }
-      countEl.textContent = `Showing ${filtered.length} of ${allItems.length} builds.`;
+
+      const scope = historyItems !== null ? "all history" : "latest";
+      countEl.textContent = `Showing ${shown.length} of ${filtered.length} matching builds (${scope}).`;
+      const remaining = filtered.length - shown.length;
+      if (remaining > 0) {
+        loadMoreBtn.hidden = false;
+        loadMoreBtn.textContent = `Load more (${remaining} remaining)`;
+      } else {
+        loadMoreBtn.hidden = true;
+      }
     }
 
     fetch("index.json")
       .then(r => r.json())
       .then(data => {
-        allItems = data.attachments || [];
-        populateSelect(distroEl, allItems.map(e => e.distro));
-        populateSelect(archEl, allItems.map(e => e.arch));
-        populateSelect(channelEl, allItems.map(e => e.channel));
+        latestItems = data.attachments || [];
+        populateSelect(distroEl, latestItems.map(e => e.distro));
+        populateSelect(archEl, latestItems.map(e => e.arch));
+        populateSelect(channelEl, latestItems.map(e => e.channel));
         render();
       })
       .catch(err => {
         countEl.textContent = `Failed to load index.json: ${err}`;
       });
 
-    for (const el of [qEl, distroEl, archEl, channelEl]) {
-      el.addEventListener("input", render);
-      el.addEventListener("change", render);
+    loadHistoryBtn.addEventListener("click", () => {
+      visibleLimit = PAGE_SIZE * 2;
+      ensureHistoryLoaded().then(render);
+    });
+
+    loadMoreBtn.addEventListener("click", () => {
+      visibleLimit += PAGE_SIZE;
+      render();
+    });
+
+    qEl.addEventListener("input", () => {
+      visibleLimit = PAGE_SIZE;
+      if (qEl.value.trim() && historyItems === null) {
+        ensureHistoryLoaded().then(render);
+      } else {
+        render();
+      }
+    });
+
+    for (const el of [distroEl, archEl, channelEl]) {
+      el.addEventListener("change", () => {
+        visibleLimit = PAGE_SIZE;
+        if (el.value && historyItems === null) {
+          ensureHistoryLoaded().then(render);
+        } else {
+          render();
+        }
+      });
     }
   </script>
 </body>
