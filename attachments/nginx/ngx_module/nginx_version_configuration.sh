@@ -89,7 +89,23 @@ if [ "${SKIP_NGINX_GPG_VERIFY:-false}" != "true" ]; then
     fi
 
     echo "Verifying PGP signature ${ASC_FILE} for ${TARBALL}..."
-    gpg --batch --verify "${ASC_FILE}" "${TARBALL}"
+    VERIFY_OUT=$(gpg --batch --status-fd=1 --verify "${ASC_FILE}" "${TARBALL}")
+    printf '%s\n' "${VERIFY_OUT}"
+
+    # Pin verified NGINX maintainer PGP key IDs / primary fingerprints (arut, pluknet, sb, thresh)
+    if ! printf '%s\n' "${VERIFY_OUT}" | grep -Eq '^\[GNUPG:\] VALIDSIG .* (007C8D7C15D87369|D6786CE303D9A9022998DC6CC8464D549AF75C0A|A64FD5B17ADB39A8|A0EA981B66B0D967)$' && \
+       ! printf '%s\n' "${VERIFY_OUT}" | grep -Eq '^\[GNUPG:\] VALIDSIG [A-F0-9]+ [0-9-]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [A-F0-9]+ .*((007C8D7C15D87369|C8464D549AF75C0A|A64FD5B17ADB39A8|A0EA981B66B0D967))$'; then
+        # Also verify primary key fingerprint suffix in VALIDSIG field 10
+        PRIMARY_FPR=$(printf '%s\n' "${VERIFY_OUT}" | awk '/^\[GNUPG:\] VALIDSIG /{print $12; exit}')
+        case "${PRIMARY_FPR}" in
+            *007C8D7C15D87369|D6786CE303D9A9022998DC6CC8464D549AF75C0A|*A64FD5B17ADB39A8|*A0EA981B66B0D967)
+                ;;
+            *)
+                echo "ERROR: ${TARBALL} signed by unpinned PGP key '${PRIMARY_FPR}'" >&2
+                exit 1
+                ;;
+        esac
+    fi
     echo "PGP signature verification succeeded for ${TARBALL}."
     gpgconf --kill gpg-agent >/dev/null 2>&1 || true
     rm -rf "${GNUPGHOME_TMP}" || true
